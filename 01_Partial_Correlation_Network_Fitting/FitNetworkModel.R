@@ -77,13 +77,13 @@ t1data$livsit.x <- ifelse(t1data$livsit.x == "Assisted Living", 1, 0)  # Assumin
 t1data$bqsa_risk.x <- ifelse(t1data$bqsa_risk.x == "High Risk", 1, 0)  # Assuming 0 for Low Risk
 
 # Transform categorical vars - one hot encoding
-categorical_data <- t1data %>% select(race_lat.x, imarital.x)
+categorical_data <- t1data %>% dplyr::select(race_lat.x, imarital.x)
 encoded_data <- model.matrix(~ race_lat.x + imarital.x - 1, data = categorical_data)
 # Bind it with the original data
 encoded_data_df <- as.data.frame(encoded_data)
 t1data <- cbind(t1data, encoded_data_df)
 # Remove the original categorical columns
-t1data <- t1data %>% select(-race_lat.x, -imarital.x)
+t1data <- t1data %>% dplyr::select(-race_lat.x, -imarital.x)
 
 # Transform ordinal vars
 # Define the order
