@@ -3,125 +3,15 @@ rm(list = ls())
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # Load libraries
-library(qgraph)
-library(ggplot2)
-library(bootnet)
-library(mice)
-library(corrplot)
-library(clipr)
+library(qgraph) # Package version ‘1.9.8’
+library(ggplot2) # ‘3.5.1’
+library(bootnet) # ‘1.6’
+library(mice) #‘3.17.0’
+library(corrplot) #‘0.95’
+library(dplyr) #‘1.1.4’
 
-###################################################################
-####################### Preprocess t1data  ########################
-###################################################################
-
-# Read in t1data (t1data is the data collected at baseline, t2 is collected 6 month after)
-t1data<-read.csv("t1data.csv")
-
-# Recode "Missing:not collected" as NA
-t1data[t1data == "Missing:not collected"] <- NA
-t1data[t1data == "NA"] <- NA
-
-# Missingness
-summarize_missingness <- function(df) {
-  total_missing <- sapply(df, function(x) sum(is.na(x)))
-  percent_missing <- sapply(df, function(x) mean(is.na(x)) * 100)
-  
-  summary_df <- data.frame(
-    TotalMissing = total_missing,
-    PercentMissing = percent_missing
-  )
-  
-  summary_df <- summary_df[order(-summary_df$PercentMissing), ]
-  
-  return(summary_df)
-}
-
-missingness_byCol <- summarize_missingness(t1data)
-print(missingness_byCol)
-
-# Remove npsyt_bc.x(currently taking birth control) and employed.x because not applied to elderly people
-t1data <- subset(t1data, select = -c(smoke_c.x,npsyt_bc.x, employed.x))
-
-# Perform multiple imputation
-imputed_data <- mice(t1data, m = 10, method = 'pmm', maxit = 50, seed = 500)
-t1data <- complete(imputed_data, 1)
-
-# Identify character variables
-# character_vars <- sapply(t1data, is.character)
-# character_vars_names <- names(character_vars[character_vars])
-# print(character_vars_names)
-
-# check unique values for each character variables
-# unique_values <- lapply(t1data[character_vars_names], unique)
-# print(unique_values)
-
-# Transform character to numercial data
-# Remove highly-correlated character variables
-t1data <- subset(t1data, select = -c(educ_cat.x, educ_sage.x,income_p.x, income_f.x, 
-                                     marital3.x, hisp.x,race.x, race_lat2.x, educ2.x,
-                                     ibm_group.x,lfq11f.x))
-# Classify categorical variables
-binary_var<-c("moca_impaired.x", "gender.x", "livsit.x","veteran.x","smoke_e.x",
-              "ffi_frlty.x","ffi_ipf.x","bqsa_risk.x","psytr_lith.x","npsyt_ht.x",
-              "npsyt_db.x","npsyt_chol.x","npsyt_horm.x")
-ordinal_var<-c("income_p2.x","income_f2.x","alc_2.x")
-categorial_var<-c("race_lat.x","imarital.x")
-
-# Transform the binary vars
-YN_binary <-c("veteran.x","smoke_e.x","ffi_frlty.x","ffi_ipf.x","psytr_lith.x","npsyt_ht.x",
-       "npsyt_db.x","npsyt_chol.x","npsyt_horm.x")
-t1data[YN_binary] <- lapply(t1data[YN_binary], function(x) ifelse(x == "Yes", 1, 0))
-t1data$moca_impaired.x <- ifelse(t1data$moca_impaired.x == "Impaired", 1, 0)
-t1data$gender.x <- ifelse(t1data$gender.x == "Male", 1, 0)  # Assuming 0 for Female
-t1data$livsit.x <- ifelse(t1data$livsit.x == "Assisted Living", 1, 0)  # Assuming 0 for 13
-t1data$bqsa_risk.x <- ifelse(t1data$bqsa_risk.x == "High Risk", 1, 0)  # Assuming 0 for Low Risk
-
-# Transform categorical vars - one hot encoding
-categorical_data <- t1data %>% dplyr::select(race_lat.x, imarital.x)
-encoded_data <- model.matrix(~ race_lat.x + imarital.x - 1, data = categorical_data)
-# Bind it with the original data
-encoded_data_df <- as.data.frame(encoded_data)
-t1data <- cbind(t1data, encoded_data_df)
-# Remove the original categorical columns
-t1data <- t1data %>% dplyr::select(-race_lat.x, -imarital.x)
-
-# Transform ordinal vars
-# Define the order
-income_order <- c("<$35,000", "$35,000-$74,999", "$75,000+")
-alc_order <- c("Lifetime Abstainer", "Former Drinker", "Current Infrequent Drinker", "Current Regular Drinker")
-# Convert each ordinal variable to numeric
-t1data$income_p2.x <- as.numeric(factor(t1data$income_p2.x, levels = income_order, ordered = TRUE))
-t1data$income_f2.x <- as.numeric(factor(t1data$income_f2.x, levels = income_order, ordered = TRUE))
-t1data$alc_2.x <- as.numeric(factor(t1data$alc_2.x, levels = alc_order, ordered = TRUE))
-
-# if income_p2>income_f2 (personal income> family income), update income_f2 = income_p2
-t1data$income_f2.x <- ifelse(t1data$income_p2.x > t1data$income_f2.x, t1data$income_p2.x, t1data$income_f2.x)
-
-# Removing highly correlated variables
-columns_to_remove <- c( "socposh.x","socposl.x",
-                       "imarital.xMarried","imarital.xWidowed",
-                       "npsytt.x","ths_ass.x","ths_pss.x",
-                       "cei2_ss.x","cei2_es.x",
-                       "bmmrs_ds.x","bmmrs_pp.x","ffi_frlty.x",
-                       "sppb_csos.x","sppb_bos.x","sppb_gos.x",
-                       "psytr_ot.x","wsdm_tot.x","sdw_tot.x",
-                       "scbcstot.x")
-t1data <- t1data[, !names(t1data) %in% columns_to_remove]
-
-# Rename long fields name
-new_names <- c( "AfricanAmerican"="race_lat.xAfrican American", "Asian"="race_lat.xAsian","Caucasian"='race_lat.xCaucasian',
-                "Hispanic"='race_lat.xHispanic',"Divorced"='imarital.xDivorced', "Single"='imarital.xSingle')
-
-names(t1data)[names(t1data) %in% new_names] <- names(new_names)[match(names(t1data), new_names, nomatch = 0)]
-
-
-#write_clip(t1data)
-
-# Check for multicollinearity by calculating the correlation matrix
-# cor_matrix <- cor_auto(t1data)
-# corrplot(cor_matrix, method = "circle")
-# par(mfrow = c(1, 1), mar = c(3,3, 5, 3))
-# corrplot(cor_matrix, method = "circle", tl.cex = 0.3)  
+# Read in t1Processeddata (t1data is the data collected at baseline, t2 is collected 6 month after)
+t1data<-read.csv("t1ProcessedData.csv")
 
 ###################################################################
 ####################### Fit Network Model  ########################

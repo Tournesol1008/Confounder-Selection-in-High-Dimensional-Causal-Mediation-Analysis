@@ -13,6 +13,7 @@ library(causalweight)
 # Read in refined metadata
 data <- read.csv("t1t2ImputedData.csv")
 
+
 # Keep only the specified variables
 data <- data[, c("subnum.x", "csascore.x", "uclalst.x", "faith_pd.x", "shannon.x", "faith_pd.y", 
                  "shannon.y", "moca_impaired.y", "mocatot.y", "GDS.y", "GDS_impaired.y", "mencomp.x", 
